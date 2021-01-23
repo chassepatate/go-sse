@@ -13,7 +13,7 @@ var ErrUnknownConnection = errors.New("connection not found")
 type Server struct {
 	mu                 sync.Mutex
 	closed             bool
-	connections        map[string]*Connection
+	connections        *connectionStore
 	heartBeatInterval  time.Duration
 	customHeaders      map[string]string
 	disconnectCallback func(connectionId string)
@@ -21,7 +21,7 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		connections:   make(map[string]*Connection),
+		connections:   newConnectionStore(),
 		customHeaders: make(map[string]string),
 	}
 }
@@ -45,7 +45,7 @@ func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connect
 		s.deleteConnection(connection.id)
 	}
 
-	s.connections[connection.id] = connection
+	s.connections.add(connection)
 
 	return connection, nil
 }
@@ -69,44 +69,17 @@ func (s *Server) setHeaders(w http.ResponseWriter) {
 	}
 }
 
-func (s *Server) deleteConnection(connectionId string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.connections, connectionId)
+func (s *Server) deleteConnection(id string) {
+	s.connections.delete(id)
 
 	if s.disconnectCallback != nil {
-		go s.disconnectCallback(connectionId)
+		go s.disconnectCallback(id)
 	}
 }
-func (s *Server) getConnection(id string) (*Connection, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	connection, exists := s.connections[id]
-	if !exists {
-		return nil, ErrUnknownConnection
-	}
-
-	return connection, nil
-}
-
-func (s *Server) getConnections() []*Connection {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	result := make([]*Connection, 0, len(s.connections))
-	for _, c := range s.connections {
-		result = append(result, c)
-	}
-
-	return result
-}
-
 func (s *Server) Write(connectionId string, event Event) error {
-	connection, err := s.getConnection(connectionId)
-	if err != nil {
-		return err
+	connection, exists := s.connections.get(connectionId)
+	if !exists {
+		return ErrUnknownConnection
 	}
 
 	connection.Write(event)
@@ -115,7 +88,7 @@ func (s *Server) Write(connectionId string, event Event) error {
 }
 
 func (s *Server) Broadcast(event Event) {
-	for _, c := range s.getConnections() {
+	for _, c := range s.connections.getAll() {
 		c.Write(event)
 	}
 }
@@ -129,9 +102,8 @@ func (s *Server) Close() error {
 	s.closed = true
 	s.mu.Unlock()
 
-	for _, connection := range s.connections {
-		// The callback executed on close uses the server mutex, so it's important we don't lock the mutex here
-		connection.Close()
+	for _, c := range s.connections.getAll() {
+		c.Close()
 	}
 
 	return nil
