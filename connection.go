@@ -51,7 +51,7 @@ func (c *Connection) Serve() error {
 	}
 	defer c.Close()
 
-	go c.handleHeartBeat()
+	go c.handleHeartbeat()
 
 writeLoop:
 	for {
@@ -73,7 +73,7 @@ writeLoop:
 	return nil
 }
 
-func (c *Connection) handleHeartBeat() {
+func (c *Connection) handleHeartbeat() {
 	if c.heartbeatInterval <= 0 {
 		return
 	}
