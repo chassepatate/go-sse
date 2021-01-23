@@ -46,8 +46,8 @@ func (c *Connection) Closed() bool {
 	return c.closed
 }
 
-func (c *Connection) Send(event Event) {
-	bytes := event.Prepare()
+func (c *Connection) Write(event Event) {
+	bytes := event.format()
 	c.msg <- bytes
 }
 
@@ -64,7 +64,9 @@ writeLoop:
 		case <-c.request.Context().Done():
 			break writeLoop
 		case <-heartBeat.C:
-			c.Send(HeartbeatEvent{})
+			c.Write(Event{
+				Event: "heartbeat",
+			})
 		case msg, open := <-c.msg:
 			if !open {
 				return errors.New("msg chan closed")

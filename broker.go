@@ -78,7 +78,7 @@ func (b *Broker) removeClient(connectionId string) {
 	}
 }
 
-func (b *Broker) Send(connectionId string, event Event) error {
+func (b *Broker) Write(connectionId string, event Event) error {
 	b.connectionsLock.Lock()
 	defer b.connectionsLock.Unlock()
 
@@ -86,7 +86,7 @@ func (b *Broker) Send(connectionId string, event Event) error {
 		return ErrUnknownConnection
 	}
 
-	b.connections[connectionId].Send(event)
+	b.connections[connectionId].Write(event)
 
 	return nil
 }
@@ -96,7 +96,7 @@ func (b *Broker) Broadcast(event Event) {
 	defer b.connectionsLock.Unlock()
 
 	for _, connection := range b.connections {
-		connection.Send(event)
+		connection.Write(event)
 	}
 }
 
