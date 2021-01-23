@@ -3,7 +3,6 @@ package sse
 import (
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -13,8 +12,6 @@ var ErrServerClosed = errors.New("server closed")
 var ErrUnknownConnection = errors.New("connection not found")
 
 type Server struct {
-	mu                 sync.RWMutex
-	closed             bool
 	connections        *connectionStore
 	heartbeatInterval  time.Duration
 	customHeaders      map[string]string
@@ -30,13 +27,6 @@ func NewServer() *Server {
 }
 
 func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connection, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.closed {
-		return nil, ErrServerClosed
-	}
-
 	s.setHeaders(w)
 
 	connection, err := newConnection(w, r, s.heartbeatInterval)
@@ -104,15 +94,4 @@ func (s *Server) Broadcast(event Event) {
 // SetDisconnectCallback sets a function which will be called when a connection is closed
 func (s *Server) SetDisconnectCallback(cb func(connectionId string)) {
 	s.disconnectCallback = cb
-}
-
-// Close closes the server and all open connections
-func (s *Server) Close() {
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
-
-	for _, c := range s.connections.getAll() {
-		c.Close()
-	}
 }

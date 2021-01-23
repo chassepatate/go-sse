@@ -18,6 +18,7 @@ type Connection struct {
 	msg               chan []byte
 	onClose           func()
 	closed            bool
+	done              chan struct{}
 }
 
 func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval time.Duration) (*Connection, error) {
@@ -26,18 +27,37 @@ func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval tim
 		return nil, errors.New("streaming not supported")
 	}
 
-	return &Connection{
+	connection := &Connection{
 		id:                uuid.New().String(),
 		responseWriter:    w,
 		request:           r,
 		flusher:           flusher,
 		msg:               make(chan []byte),
 		heartbeatInterval: heartbeatInterval,
-	}, nil
+		done:              make(chan struct{}),
+	}
+
+	go func() {
+		<-r.Context().Done()
+		connection.close()
+	}()
+
+	return connection, nil
 }
 
 func (c *Connection) ID() string {
 	return c.id
+}
+
+func (c *Connection) close() {
+	close(c.done)
+	c.closed = true
+
+	if c.onClose != nil {
+		c.onClose()
+	}
+
+	close(c.msg)
 }
 
 // Serve starts writing the messages to the client
@@ -46,19 +66,15 @@ func (c *Connection) Serve() error {
 	if c.closed {
 		return errors.New("can't serve closed connection")
 	}
-	defer c.Close()
 
 	go c.handleHeartbeat()
 
 writeLoop:
 	for {
 		select {
-		case <-c.request.Context().Done():
+		case <-c.done:
 			break writeLoop
-		case msg, open := <-c.msg:
-			if !open {
-				return errors.New("msg chan closed")
-			}
+		case msg := <-c.msg:
 			_, err := c.responseWriter.Write(msg)
 			if err != nil {
 				return errors.New("write failed")
@@ -96,18 +112,4 @@ func (c *Connection) Closed() bool {
 // Write writes an event to the client
 func (c *Connection) Write(event Event) {
 	c.msg <- event.format()
-}
-
-// Close closes the connection
-func (c *Connection) Close() {
-	if c.closed {
-		return
-	}
-
-	if c.onClose != nil {
-		c.onClose()
-	}
-
-	close(c.msg)
-	c.closed = true
 }
