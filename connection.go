@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-const heartbeatInterval = 15 * time.Second
-
 type Connection struct {
 	id string
 
@@ -16,13 +14,15 @@ type Connection struct {
 	request        *http.Request
 	flusher        http.Flusher
 
+	heartBeatInterval time.Duration
+
 	msg     chan []byte
 	onClose func()
 	closed  bool
 }
 
-// Users should not create instances of client. This should be handled by the SSE broker.
-func newConnection(w http.ResponseWriter, r *http.Request) (*Connection, error) {
+// Users should not create instances of client. This should be handled by the SSE server.
+func newConnection(w http.ResponseWriter, r *http.Request, interval time.Duration) (*Connection, error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
@@ -38,8 +38,12 @@ func newConnection(w http.ResponseWriter, r *http.Request) (*Connection, error) 
 	}, nil
 }
 
+func (c *Connection) ID() string {
+	return c.id
+}
+
 func (c *Connection) Open() error {
-	return c.serve(heartbeatInterval)
+	return c.serve()
 }
 
 func (c *Connection) Closed() bool {
@@ -51,19 +55,27 @@ func (c *Connection) Write(event Event) {
 	c.msg <- bytes
 }
 
-func (c *Connection) serve(interval time.Duration) error {
-	heartBeat := time.NewTicker(interval)
+func (c *Connection) serve() error {
 	defer func() {
-		heartBeat.Stop()
 		c.Close()
 	}()
+
+	var heartBeat <-chan time.Time
+
+	if c.heartBeatInterval > 0 {
+		ticker := time.NewTicker(c.heartBeatInterval)
+		heartBeat = ticker.C
+		defer func() {
+			ticker.Stop()
+		}()
+	}
 
 writeLoop:
 	for {
 		select {
 		case <-c.request.Context().Done():
 			break writeLoop
-		case <-heartBeat.C:
+		case <-heartBeat:
 			c.Write(Event{
 				Event: "heartbeat",
 			})

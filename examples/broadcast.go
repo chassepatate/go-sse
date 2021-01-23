@@ -11,29 +11,28 @@ import (
 )
 
 type API struct {
-	broker *sse.Broker
+	server *sse.Server
 }
 
 func main() {
 	logrus.SetLevel(logrus.DebugLevel)
-	sseClientBroker := sse.NewBroker()
-	sseClientBroker.SetCustomHeaders(map[string]string{
+	sseServer := sse.NewServer()
+	sseServer.SetCustomHeaders(map[string]string{
 		"Access-Control-Allow-Origin": "*",
 	})
 
-	api := &API{broker: sseClientBroker}
+	api := &API{server: sseServer}
 
 	http.HandleFunc("/sse", api.sseHandler)
 
-	// Broadcast message to all clients every 5 seconds
 	go func() {
 		count := 0
-		tick := time.Tick(5 * time.Second)
+		tick := time.Tick(2 * time.Second)
 		for {
 			select {
 			case <-tick:
 				count++
-				api.broker.Broadcast(sse.Event{
+				api.server.Broadcast(sse.Event{
 					Id:    fmt.Sprintf("event-id-%v", count),
 					Event: "message",
 					Data:  "test " + strconv.Itoa(count),
@@ -46,11 +45,12 @@ func main() {
 }
 
 func (api *API) sseHandler(writer http.ResponseWriter, request *http.Request) {
-	connection, err := api.broker.NewConnection(writer, request)
+	connection, err := api.server.NewConnection(writer, request)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	log.Printf("connecting with with new client %v", connection.ID())
 
 	err = connection.Open()
 	if err != nil {
@@ -58,5 +58,5 @@ func (api *API) sseHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	log.Printf("connection with client closed")
+	log.Printf("connection with client %v closed", connection.ID())
 }

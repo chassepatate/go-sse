@@ -4,111 +4,115 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+	"time"
 )
 
+var ErrServerClosed = errors.New("server closed")
 var ErrUnknownConnection = errors.New("connection not found")
 
-type Broker struct {
-	connectionsLock sync.Mutex
-	connections     map[string]*Connection
-
-	customHeaders map[string]string
-
+type Server struct {
+	mu                 sync.Mutex
+	closed             bool
+	connections        map[string]*Connection
+	heartBeatInterval  time.Duration
+	customHeaders      map[string]string
 	disconnectCallback func(connectionId string)
 }
 
-func NewBroker() *Broker {
-	return &Broker{
+func NewServer() *Server {
+	return &Server{
 		connections:   make(map[string]*Connection),
 		customHeaders: make(map[string]string),
 	}
 }
 
-func (b *Broker) SetCustomHeaders(headers map[string]string) {
-	b.customHeaders = headers
-}
+func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connection, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func (b *Broker) NewConnection(w http.ResponseWriter, r *http.Request) (*Connection, error) {
-	return b.ConnectWithHeartBeatInterval(w, r)
-}
+	if s.closed {
+		return nil, ErrServerClosed
+	}
 
-func (b *Broker) ConnectWithHeartBeatInterval(w http.ResponseWriter, r *http.Request) (*Connection, error) {
-	connection, err := newConnection(w, r)
+	s.setHeaders(w)
+
+	connection, err := newConnection(w, r, s.heartBeatInterval)
 	if err != nil {
 		return nil, err
 	}
 
 	connection.onClose = func() {
-		b.removeClient(connection.id)
+		s.deleteConnection(connection.id)
 	}
 
-	b.setHeaders(w)
-
-	b.addConnection(connection)
+	s.connections[connection.id] = connection
 
 	return connection, nil
 }
 
-func (b *Broker) setHeaders(w http.ResponseWriter) {
+func (s *Server) SetCustomHeaders(headers map[string]string) {
+	s.customHeaders = headers
+}
+
+func (s *Server) SetHeartBeatInterval(d time.Duration) {
+	s.heartBeatInterval = d
+}
+
+func (s *Server) setHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	for k, v := range b.customHeaders {
+	for k, v := range s.customHeaders {
 		w.Header().Set(k, v)
 	}
 }
 
-func (b *Broker) addConnection(connection *Connection) {
-	b.connectionsLock.Lock()
-	defer b.connectionsLock.Unlock()
+func (s *Server) deleteConnection(connectionId string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	b.connections[connection.id] = connection
-}
+	delete(s.connections, connectionId)
 
-func (b *Broker) removeClient(connectionId string) {
-	b.connectionsLock.Lock()
-	defer b.connectionsLock.Unlock()
-
-	delete(b.connections, connectionId)
-
-	if b.disconnectCallback != nil {
-		go b.disconnectCallback(connectionId)
+	if s.disconnectCallback != nil {
+		go s.disconnectCallback(connectionId)
 	}
 }
 
-func (b *Broker) Write(connectionId string, event Event) error {
-	b.connectionsLock.Lock()
-	defer b.connectionsLock.Unlock()
+func (s *Server) Write(connectionId string, event Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if _, exists := b.connections[connectionId]; !exists {
+	if _, exists := s.connections[connectionId]; !exists {
 		return ErrUnknownConnection
 	}
 
-	b.connections[connectionId].Write(event)
+	s.connections[connectionId].Write(event)
 
 	return nil
 }
 
-func (b *Broker) Broadcast(event Event) {
-	b.connectionsLock.Lock()
-	defer b.connectionsLock.Unlock()
+func (s *Server) Broadcast(event Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	for _, connection := range b.connections {
+	for _, connection := range s.connections {
 		connection.Write(event)
 	}
 }
 
-func (b *Broker) SetDisconnectCallback(cb func(connectionId string)) {
-	b.disconnectCallback = cb
+func (s *Server) SetDisconnectCallback(cb func(connectionId string)) {
+	s.disconnectCallback = cb
 }
 
-func (b *Broker) Close() error {
-	b.connectionsLock.Lock()
-	defer b.connectionsLock.Unlock()
+func (s *Server) Close() error {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
 
-	for _, connection := range b.connections {
+	for _, connection := range s.connections {
+		// The callback executed on close uses the server mutex, so it's important we don't lock the mutex here
 		connection.Close()
 	}
 
