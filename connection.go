@@ -44,7 +44,8 @@ func (c *Connection) ID() string {
 	return c.id
 }
 
-// Serve cannot be used to reopen a closed connection
+// Serve starts writing the messages to the client
+// This cannot be used to reopen a closed connection
 func (c *Connection) Serve() error {
 	if c.closed {
 		return errors.New("can't serve closed connection")
@@ -91,14 +92,17 @@ func (c *Connection) handleHeartbeat() {
 	}
 }
 
+// Closed shows whether the connection was closed
 func (c *Connection) Closed() bool {
 	return c.closed
 }
 
+// Write writes an event to the client
 func (c *Connection) Write(event Event) {
 	c.msg <- event.format()
 }
 
+// Close closes the connection
 func (c *Connection) Close() {
 	if c.closed {
 		return

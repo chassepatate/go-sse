@@ -50,10 +50,14 @@ func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connect
 	return connection, nil
 }
 
+// SetCustomHeaders adds custom response headers
+
 func (s *Server) SetCustomHeaders(headers map[string]string) {
 	s.customHeaders = headers
 }
 
+// SetHeartBeatInterval sets the interval of heartbeat messages which are used to keep connections open
+// default interval is 0 which means the heartbeat is disabled
 func (s *Server) SetHeartBeatInterval(d time.Duration) {
 	s.heartbeatInterval = d
 }
@@ -76,6 +80,8 @@ func (s *Server) deleteConnection(id string) {
 		go s.disconnectCallback(id)
 	}
 }
+
+// Write writes an event to a connection based on the ID
 func (s *Server) Write(connectionId string, event Event) error {
 	connection, exists := s.connections.get(connectionId)
 	if !exists {
@@ -85,12 +91,14 @@ func (s *Server) Write(connectionId string, event Event) error {
 	return nil
 }
 
+// Broadcast sends a message to all connected clients
 func (s *Server) Broadcast(event Event) {
 	for _, c := range s.connections.getAll() {
 		c.Write(event)
 	}
 }
 
+// SetDisconnectCallback sets a function which will be called when a connection is closed
 func (s *Server) SetDisconnectCallback(cb func(connectionId string)) {
 	s.disconnectCallback = cb
 }
