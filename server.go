@@ -95,7 +95,7 @@ func (s *Server) SetDisconnectCallback(cb func(connectionId string)) {
 	s.disconnectCallback = cb
 }
 
-func (s *Server) Close() error {
+func (s *Server) Close() {
 	s.mu.Lock()
 	s.closed = true
 	s.mu.Unlock()
@@ -103,6 +103,4 @@ func (s *Server) Close() error {
 	for _, c := range s.connections.getAll() {
 		c.Close()
 	}
-
-	return nil
 }
