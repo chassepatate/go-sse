@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
+const heartbeatInterval = 15 * time.Second
+
 var ErrServerClosed = errors.New("server closed")
 var ErrUnknownConnection = errors.New("connection not found")
 
 type Server struct {
-	mu                 sync.Mutex
+	mu                 sync.RWMutex
 	closed             bool
 	connections        *connectionStore
 	heartbeatInterval  time.Duration
@@ -21,14 +23,15 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		connections:   newConnectionStore(),
-		customHeaders: make(map[string]string),
+		connections:       newConnectionStore(),
+		heartbeatInterval: heartbeatInterval,
+		customHeaders:     make(map[string]string),
 	}
 }
 
 func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connection, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if s.closed {
 		return nil, ErrServerClosed
@@ -55,9 +58,9 @@ func (s *Server) SetCustomHeaders(headers map[string]string) {
 	s.customHeaders = headers
 }
 
-// SetHeartBeatInterval sets the interval of heartbeat messages which are used to keep connections open
-// default interval is 0 which means the heartbeat is disabled
-func (s *Server) SetHeartBeatInterval(d time.Duration) {
+// SetHeartbeatInterval sets the interval of heartbeat messages which are used to keep connections open.
+// Setting the interval to 0 disables the heartbeat
+func (s *Server) SetHeartbeatInterval(d time.Duration) {
 	s.heartbeatInterval = d
 }
 

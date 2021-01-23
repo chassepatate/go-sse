@@ -3,7 +3,7 @@ package sse
 import "sync"
 
 type connectionStore struct {
-	mu          sync.Mutex
+	mu          sync.RWMutex
 	connections map[string]*Connection
 }
 
@@ -20,8 +20,8 @@ func (s *connectionStore) add(connection *Connection) {
 }
 
 func (s *connectionStore) getAll() []*Connection {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	result := make([]*Connection, 0, len(s.connections))
 	for _, c := range s.connections {
@@ -33,8 +33,8 @@ func (s *connectionStore) getAll() []*Connection {
 
 // Returns the connection and a bool that indicates whether the connection exists
 func (s *connectionStore) get(id string) (*Connection, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	c, exists := s.connections[id]
 	return c, exists
 }

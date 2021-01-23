@@ -20,7 +20,6 @@ func main() {
 	sseServer.SetCustomHeaders(map[string]string{
 		"Access-Control-Allow-Origin": "*",
 	})
-	sseServer.SetHeartBeatInterval(5 * time.Second)
 
 	api := &API{server: sseServer}
 
