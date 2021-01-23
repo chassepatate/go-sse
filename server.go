@@ -79,26 +79,44 @@ func (s *Server) deleteConnection(connectionId string) {
 		go s.disconnectCallback(connectionId)
 	}
 }
-
-func (s *Server) Write(connectionId string, event Event) error {
+func (s *Server) getConnection(id string) (*Connection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.connections[connectionId]; !exists {
-		return ErrUnknownConnection
+	connection, exists := s.connections[id]
+	if !exists {
+		return nil, ErrUnknownConnection
 	}
 
-	s.connections[connectionId].Write(event)
+	return connection, nil
+}
+
+func (s *Server) getConnections() []*Connection {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := make([]*Connection, 0, len(s.connections))
+	for _, c := range s.connections {
+		result = append(result, c)
+	}
+
+	return result
+}
+
+func (s *Server) Write(connectionId string, event Event) error {
+	connection, err := s.getConnection(connectionId)
+	if err != nil {
+		return err
+	}
+
+	connection.Write(event)
 
 	return nil
 }
 
 func (s *Server) Broadcast(event Event) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, connection := range s.connections {
-		connection.Write(event)
+	for _, c := range s.getConnections() {
+		c.Write(event)
 	}
 }
 
