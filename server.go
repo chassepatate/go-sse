@@ -51,7 +51,6 @@ func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connect
 }
 
 // SetCustomHeaders adds custom response headers
-
 func (s *Server) SetCustomHeaders(headers map[string]string) {
 	s.customHeaders = headers
 }
@@ -82,6 +81,7 @@ func (s *Server) deleteConnection(id string) {
 }
 
 // Write writes an event to a connection based on the ID
+// If the connection ID is not found, it will return an error
 func (s *Server) Write(connectionId string, event Event) error {
 	connection, exists := s.connections.get(connectionId)
 	if !exists {
@@ -103,6 +103,7 @@ func (s *Server) SetDisconnectCallback(cb func(connectionId string)) {
 	s.disconnectCallback = cb
 }
 
+// Close closes the server and all open connections
 func (s *Server) Close() {
 	s.mu.Lock()
 	s.closed = true

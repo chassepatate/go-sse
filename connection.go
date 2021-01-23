@@ -10,17 +10,14 @@ import (
 var heartbeatMessage = []byte(": heartbeat\n\n")
 
 type Connection struct {
-	id string
-
-	responseWriter http.ResponseWriter
-	request        *http.Request
-	flusher        http.Flusher
-
+	id                string
+	responseWriter    http.ResponseWriter
+	request           *http.Request
+	flusher           http.Flusher
 	heartbeatInterval time.Duration
-
-	msg     chan []byte
-	onClose func()
-	closed  bool
+	msg               chan []byte
+	onClose           func()
+	closed            bool
 }
 
 func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval time.Duration) (*Connection, error) {
@@ -35,7 +32,6 @@ func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval tim
 		request:           r,
 		flusher:           flusher,
 		msg:               make(chan []byte),
-		onClose:           func() {},
 		heartbeatInterval: heartbeatInterval,
 	}, nil
 }
