@@ -20,6 +20,7 @@ func main() {
 	sseServer.SetCustomHeaders(map[string]string{
 		"Access-Control-Allow-Origin": "*",
 	})
+	sseServer.SetHeartBeatInterval(5 * time.Second)
 
 	api := &API{server: sseServer}
 
@@ -52,7 +53,7 @@ func (api *API) sseHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 	log.Printf("connecting with with new client %v", connection.ID())
 
-	err = connection.Open()
+	err = connection.Serve()
 	if err != nil {
 		log.Println(err)
 		return

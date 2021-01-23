@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var heartbeatMessage = Event{Event: "heartbeat"}.format()
+
 type Connection struct {
 	id string
 
@@ -14,27 +16,27 @@ type Connection struct {
 	request        *http.Request
 	flusher        http.Flusher
 
-	heartBeatInterval time.Duration
+	heartbeatInterval time.Duration
 
 	msg     chan []byte
 	onClose func()
 	closed  bool
 }
 
-// Users should not create instances of client. This should be handled by the SSE server.
-func newConnection(w http.ResponseWriter, r *http.Request, interval time.Duration) (*Connection, error) {
+func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval time.Duration) (*Connection, error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
 	}
 
 	return &Connection{
-		id:             uuid.New().String(),
-		responseWriter: w,
-		request:        r,
-		flusher:        flusher,
-		msg:            make(chan []byte),
-		onClose:        func() {},
+		id:                uuid.New().String(),
+		responseWriter:    w,
+		request:           r,
+		flusher:           flusher,
+		msg:               make(chan []byte),
+		onClose:           func() {},
+		heartbeatInterval: heartbeatInterval,
 	}, nil
 }
 
@@ -42,43 +44,20 @@ func (c *Connection) ID() string {
 	return c.id
 }
 
-func (c *Connection) Open() error {
-	return c.serve()
-}
-
-func (c *Connection) Closed() bool {
-	return c.closed
-}
-
-func (c *Connection) Write(event Event) {
-	bytes := event.format()
-	c.msg <- bytes
-}
-
-func (c *Connection) serve() error {
-	defer func() {
-		c.Close()
-	}()
-
-	var heartBeat <-chan time.Time
-
-	if c.heartBeatInterval > 0 {
-		ticker := time.NewTicker(c.heartBeatInterval)
-		heartBeat = ticker.C
-		defer func() {
-			ticker.Stop()
-		}()
+// Serve cannot be used to reopen a closed connection
+func (c *Connection) Serve() error {
+	if c.closed {
+		return errors.New("can't serve closed connection")
 	}
+	defer c.Close()
+
+	go c.handleHeartBeat()
 
 writeLoop:
 	for {
 		select {
 		case <-c.request.Context().Done():
 			break writeLoop
-		case <-heartBeat:
-			c.Write(Event{
-				Event: "heartbeat",
-			})
 		case msg, open := <-c.msg:
 			if !open {
 				return errors.New("msg chan closed")
@@ -90,10 +69,45 @@ writeLoop:
 			c.flusher.Flush()
 		}
 	}
+
 	return nil
 }
 
+func (c *Connection) handleHeartBeat() {
+	if c.heartbeatInterval <= 0 {
+		return
+	}
+
+	heartbeats := time.NewTicker(c.heartbeatInterval)
+	defer heartbeats.Stop()
+
+	for {
+		select {
+		case <-heartbeats.C:
+			c.msg <- heartbeatMessage
+		case <-c.request.Context().Done():
+			return
+		}
+	}
+}
+
+func (c *Connection) Closed() bool {
+	return c.closed
+}
+
+func (c *Connection) Write(event Event) {
+	c.msg <- event.format()
+}
+
 func (c *Connection) Close() {
-	c.onClose()
+	if c.closed {
+		return
+	}
+
+	if c.onClose != nil {
+		c.onClose()
+	}
+
+	close(c.msg)
 	c.closed = true
 }

@@ -14,7 +14,7 @@ type Server struct {
 	mu                 sync.Mutex
 	closed             bool
 	connections        *connectionStore
-	heartBeatInterval  time.Duration
+	heartbeatInterval  time.Duration
 	customHeaders      map[string]string
 	disconnectCallback func(connectionId string)
 }
@@ -36,7 +36,7 @@ func (s *Server) NewConnection(w http.ResponseWriter, r *http.Request) (*Connect
 
 	s.setHeaders(w)
 
-	connection, err := newConnection(w, r, s.heartBeatInterval)
+	connection, err := newConnection(w, r, s.heartbeatInterval)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (s *Server) SetCustomHeaders(headers map[string]string) {
 }
 
 func (s *Server) SetHeartBeatInterval(d time.Duration) {
-	s.heartBeatInterval = d
+	s.heartbeatInterval = d
 }
 
 func (s *Server) setHeaders(w http.ResponseWriter) {
@@ -81,9 +81,7 @@ func (s *Server) Write(connectionId string, event Event) error {
 	if !exists {
 		return ErrUnknownConnection
 	}
-
 	connection.Write(event)
-
 	return nil
 }
 
