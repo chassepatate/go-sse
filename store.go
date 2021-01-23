@@ -33,6 +33,8 @@ func (s *connectionStore) getAll() []*Connection {
 
 // Returns the connection and a bool that indicates whether the connection exists
 func (s *connectionStore) get(id string) (*Connection, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	c, exists := s.connections[id]
 	return c, exists
 }
