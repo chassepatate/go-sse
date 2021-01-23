@@ -54,7 +54,8 @@ func (api *API) sseHandler(writer http.ResponseWriter, request *http.Request) {
 
 	err = connection.Open()
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 
 	log.Printf("connection with client closed")
