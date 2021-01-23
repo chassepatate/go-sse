@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var heartbeatMessage = Event{Event: "heartbeat"}.format()
+var heartbeatMessage = []byte(": heartbeat\n\n")
 
 type Connection struct {
 	id string
