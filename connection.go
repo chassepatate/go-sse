@@ -46,7 +46,7 @@ func (c *Connection) ID() string {
 	return c.id
 }
 
-// Serve starts writing the messages to the client
+// Serve starts writing the events to the client
 // This cannot be used to reopen a closed connection
 func (c *Connection) Serve() error {
 	if c.closed {
@@ -59,8 +59,8 @@ func (c *Connection) Serve() error {
 		select {
 		case <-c.done:
 			return nil
-		case msg := <-c.events:
-			_, err := c.responseWriter.Write(msg)
+		case event := <-c.events:
+			_, err := c.responseWriter.Write(event)
 			if err != nil {
 				return errors.New("write failed")
 			}

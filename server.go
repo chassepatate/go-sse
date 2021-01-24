@@ -48,7 +48,7 @@ func (s *Server) SetCustomHeaders(headers map[string]string) {
 	s.customHeaders = headers
 }
 
-// SetHeartbeatInterval sets the interval of heartbeat messages which are used to keep connections open.
+// SetHeartbeatInterval sets the interval of heartbeats which are used to keep connections open.
 // Setting the interval to 0 disables the heartbeat
 func (s *Server) SetHeartbeatInterval(d time.Duration) {
 	s.heartbeatInterval = d
@@ -84,7 +84,7 @@ func (s *Server) Write(connectionId string, event Event) error {
 	return nil
 }
 
-// Broadcast sends a message to all connected clients
+// Broadcast sends an event to all connected clients
 func (s *Server) Broadcast(event Event) {
 	for _, c := range s.connections.getAll() {
 		c.Write(event)
