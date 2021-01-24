@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/chassepatate/go-sse"
+	"github.com/chassepatate/sse-server"
 	"log"
 	"net/http"
 	"strconv"
