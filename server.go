@@ -8,7 +8,6 @@ import (
 
 const heartbeatInterval = 15 * time.Second
 
-var ErrServerClosed = errors.New("server closed")
 var ErrUnknownConnection = errors.New("connection not found")
 
 type Server struct {
