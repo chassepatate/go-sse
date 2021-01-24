@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var heartbeatMessage = []byte(": heartbeat\n\n")
+var heartbeat = []byte(": heartbeat\n\n")
 
 type Connection struct {
 	id                string
@@ -15,7 +15,7 @@ type Connection struct {
 	request           *http.Request
 	flusher           http.Flusher
 	heartbeatInterval time.Duration
-	msg               chan []byte
+	events            chan []byte
 	onClose           func()
 	closed            bool
 	done              chan struct{}
@@ -32,7 +32,7 @@ func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval tim
 		responseWriter:    w,
 		request:           r,
 		flusher:           flusher,
-		msg:               make(chan []byte),
+		events:            make(chan []byte),
 		heartbeatInterval: heartbeatInterval,
 		done:              make(chan struct{}),
 	}
@@ -59,7 +59,7 @@ func (c *Connection) Serve() error {
 		select {
 		case <-c.done:
 			return nil
-		case msg := <-c.msg:
+		case msg := <-c.events:
 			_, err := c.responseWriter.Write(msg)
 			if err != nil {
 				return errors.New("write failed")
@@ -82,16 +82,18 @@ func (c *Connection) handleHeartbeat() {
 		case <-c.done:
 			return
 		case <-heartbeats.C:
-			c.msg <- heartbeatMessage
+			c.events <- heartbeat
 		}
 	}
 }
 
 // Write writes an event to the client
 func (c *Connection) Write(event Event) {
-	c.msg <- event.format()
+	c.events <- event.format()
 }
 
+// closeOnClientDisconnect closes the SSE connection when the request is canceled (with HTTP/2),
+// or when the ServeHTTP method returns.
 func (c *Connection) closeOnClientDisconnect() {
 	<-c.request.Context().Done()
 	c.close()
@@ -105,7 +107,7 @@ func (c *Connection) close() {
 		c.onClose()
 	}
 
-	close(c.msg)
+	close(c.events)
 }
 
 // Closed shows whether the connection was closed
