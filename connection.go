@@ -37,16 +37,64 @@ func newConnection(w http.ResponseWriter, r *http.Request, heartbeatInterval tim
 		done:              make(chan struct{}),
 	}
 
-	go func() {
-		<-r.Context().Done()
-		connection.close()
-	}()
+	go connection.closeOnClientDisconnect()
 
 	return connection, nil
 }
 
 func (c *Connection) ID() string {
 	return c.id
+}
+
+// Serve starts writing the messages to the client
+// This cannot be used to reopen a closed connection
+func (c *Connection) Serve() error {
+	if c.closed {
+		return errors.New("can't serve closed connection")
+	}
+
+	go c.handleHeartbeat()
+
+	for {
+		select {
+		case <-c.done:
+			return nil
+		case msg := <-c.msg:
+			_, err := c.responseWriter.Write(msg)
+			if err != nil {
+				return errors.New("write failed")
+			}
+			c.flusher.Flush()
+		}
+	}
+}
+
+func (c *Connection) handleHeartbeat() {
+	if c.heartbeatInterval <= 0 {
+		return
+	}
+
+	heartbeats := time.NewTicker(c.heartbeatInterval)
+	defer heartbeats.Stop()
+
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-heartbeats.C:
+			c.msg <- heartbeatMessage
+		}
+	}
+}
+
+// Write writes an event to the client
+func (c *Connection) Write(event Event) {
+	c.msg <- event.format()
+}
+
+func (c *Connection) closeOnClientDisconnect() {
+	<-c.request.Context().Done()
+	c.close()
 }
 
 func (c *Connection) close() {
@@ -60,56 +108,7 @@ func (c *Connection) close() {
 	close(c.msg)
 }
 
-// Serve starts writing the messages to the client
-// This cannot be used to reopen a closed connection
-func (c *Connection) Serve() error {
-	if c.closed {
-		return errors.New("can't serve closed connection")
-	}
-
-	go c.handleHeartbeat()
-
-writeLoop:
-	for {
-		select {
-		case <-c.done:
-			break writeLoop
-		case msg := <-c.msg:
-			_, err := c.responseWriter.Write(msg)
-			if err != nil {
-				return errors.New("write failed")
-			}
-			c.flusher.Flush()
-		}
-	}
-
-	return nil
-}
-
-func (c *Connection) handleHeartbeat() {
-	if c.heartbeatInterval <= 0 {
-		return
-	}
-
-	heartbeats := time.NewTicker(c.heartbeatInterval)
-	defer heartbeats.Stop()
-
-	for {
-		select {
-		case <-heartbeats.C:
-			c.msg <- heartbeatMessage
-		case <-c.request.Context().Done():
-			return
-		}
-	}
-}
-
 // Closed shows whether the connection was closed
 func (c *Connection) Closed() bool {
 	return c.closed
-}
-
-// Write writes an event to the client
-func (c *Connection) Write(event Event) {
-	c.msg <- event.format()
 }
