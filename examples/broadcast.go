@@ -3,49 +3,26 @@ package main
 import (
 	"fmt"
 	"github.com/chassepatate/go-sse"
-	"github.com/sirupsen/logrus"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 )
 
-type API struct {
-	server *sse.Server
-}
+var server *sse.Server
 
 func main() {
-	logrus.SetLevel(logrus.DebugLevel)
-	sseServer := sse.NewServer()
-	sseServer.SetCustomHeaders(map[string]string{
-		"Access-Control-Allow-Origin": "*",
-	})
+	server = sse.NewServer()
 
-	api := &API{server: sseServer}
+	http.HandleFunc("/", handler)
 
-	http.HandleFunc("/sse", api.sseHandler)
+	go startEventProducer()
 
-	go func() {
-		count := 0
-		tick := time.Tick(2 * time.Second)
-		for {
-			select {
-			case <-tick:
-				count++
-				api.server.Broadcast(sse.Event{
-					Id:    fmt.Sprintf("event-id-%v", count),
-					Event: "message",
-					Data:  "test " + strconv.Itoa(count),
-				})
-			}
-		}
-	}()
-
-	log.Fatal(http.ListenAndServe(":8080", http.DefaultServeMux))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func (api *API) sseHandler(writer http.ResponseWriter, request *http.Request) {
-	connection, err := api.server.NewConnection(writer, request)
+func handler(writer http.ResponseWriter, request *http.Request) {
+	connection, err := server.NewConnection(writer, request)
 	if err != nil {
 		log.Println(err)
 		return
@@ -59,4 +36,17 @@ func (api *API) sseHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	log.Printf("connection with client %v closed", connection.ID())
+}
+
+func startEventProducer() {
+	count := 0
+	for range time.Tick(2 * time.Second) {
+		count++
+		server.Broadcast(sse.Event{
+			Id:    fmt.Sprintf("event-id-%v", count),
+			Event: "message",
+			Data:  "test " + strconv.Itoa(count),
+		})
+
+	}
 }
